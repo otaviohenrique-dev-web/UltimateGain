@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+websockets
+ccxt
+python-dotenv
+stable-baselines3
+torch
+pandas
