@@ -4,5 +4,6 @@ websockets
 ccxt
 python-dotenv
 stable-baselines3
+sb3-contrib
 torch
 pandas
