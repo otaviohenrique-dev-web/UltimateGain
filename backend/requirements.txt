@@ -1,9 +1,17 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 fastapi
-uvicorn
+uvicorn[standard]
 websockets
-ccxt
 python-dotenv
+aiohttp
+google-genai
+ccxt
+pandas
+numpy
+matplotlib
+python-multipart
 stable-baselines3
 sb3-contrib
+gymnasium
 torch
-pandas
+pandas-ta-classic
