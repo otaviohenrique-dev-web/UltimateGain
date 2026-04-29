@@ -59,7 +59,7 @@ export default function PerformanceMetrics({ data }) {
 
             <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
               <div 
-                className={`h-full bg-gradient-to-r ${metric.color}`}
+            className={`h-full bg-linear-to-r ${metric.color}`}
                 style={{ width: '65%' }}
               />
             </div>

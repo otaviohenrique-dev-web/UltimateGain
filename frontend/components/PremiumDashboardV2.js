@@ -27,10 +27,33 @@ import RiskManagementPanel from './RiskManagementPanel';
 
 export default function PremiumDashboardV2({ data, connected }) {
   const [hideBalance, setHideBalance] = useState(false);
+  const [translatedNews, setTranslatedNews] = useState([]);
   
   const isPositive = data?.floating_pnl >= 0;
+  // O frontend reage puramente à string do backend
+  const isLocked = data?.status === 'PROTEÇÃO' || data?.status?.includes('PROTEÇÃO');
   const remainingSeconds = parseInt(data?.status?.match(/\d+/)?.[0] || 0);
-  const isLocked = data?.status?.includes('PROTEÇÃO');
+  
+
+  // Efeito para traduzir as notícias automaticamente para PT-BR
+  useEffect(() => {
+    const translateNews = async () => {
+      if (Array.isArray(data?.news) && data.news.length > 0) {
+        try {
+          const translated = await Promise.all(data.news.map(async (text) => {
+            const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=pt&dt=t&q=${encodeURIComponent(text)}`);
+            const json = await res.json();
+            return json[0].map(item => item[0]).join(''); // Junta as partes traduzidas
+          }));
+          setTranslatedNews(translated);
+        } catch (error) {
+          console.error("Erro ao traduzir notícias:", error);
+          setTranslatedNews(data.news); // Fallback para o idioma original caso falhe
+        }
+      }
+    };
+    translateNews();
+  }, [data?.news]);
 
   // Helpers
   const formatValue = (val, decimals = 2) => {
@@ -52,7 +75,7 @@ export default function PremiumDashboardV2({ data, connected }) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0f0f1e] via-[#1a1a2e] to-[#0f0f1e]">
+    <div className="min-h-screen bg-linear-to-br from-[#0f0f1e] via-[#1a1a2e] to-[#0f0f1e]">
       {/* Animated Background */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl"></div>
@@ -65,7 +88,7 @@ export default function PremiumDashboardV2({ data, connected }) {
           <div className="flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-lg bg-linear-to-br from-blue-500 to-cyan-400 flex items-center justify-center">
                 <Activity size={20} className="text-white" />
               </div>
               <div className="flex flex-col">
@@ -131,8 +154,9 @@ export default function PremiumDashboardV2({ data, connected }) {
             <div className="text-xs text-slate-500 mt-2">Spot • Timeframe 15m</div>
           </div>
 
-          {/* 2. Balance (Main) */}
-          <div className="lg:col-span-2 p-6 rounded-xl border border-slate-700/30 bg-gradient-to-br from-slate-900/60 to-slate-900/30 backdrop-blur-sm">
+
+          {/* 2. Balance (Main) - Reatividade de PnL Garantida */}
+          <div className="lg:col-span-2 p-6 rounded-xl border border-slate-700/30 bg-linear-to-br from-slate-900/60 to-slate-900/30 backdrop-blur-sm">
             <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
               Patrimônio Disponível
             </div>
@@ -141,9 +165,11 @@ export default function PremiumDashboardV2({ data, connected }) {
                 <div className="text-2xl font-bold text-slate-400">••••••••</div>
               ) : (
                 <>
+                  {/* O saldo reage diretamente ao data.balance enviado pelo backend (que já deve incluir o PnL fechado) */}
                   <div className={`text-3xl font-bold font-mono ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
-                    ${formatValue(data?.display_balance || data?.balance || 0, 2)}
+                    ${formatValue(data?.balance || 100.00, 2)}
                   </div>
+                  {/* O floating_pnl reage às flutuações das posições abertas */}
                   {data?.floating_pnl !== undefined && (
                     <div className={`text-sm font-mono mt-2 flex items-center gap-2 ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
                       {isPositive ? (
@@ -159,32 +185,31 @@ export default function PremiumDashboardV2({ data, connected }) {
             </div>
           </div>
 
-          {/* 3. Status */}
-          <div className="p-6 rounded-xl border border-slate-700/30 bg-slate-900/40 backdrop-blur-sm">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Zap size={14} className={isLocked ? 'text-blue-400' : 'text-yellow-400'} />
-              Sistema
+         {/* 3. Status e Cooldown */}
+          <div className={`p-6 rounded-xl border transition-all duration-500 backdrop-blur-sm ${
+            isLocked ? 'border-red-500/50 bg-red-500/10 shadow-[inset_0_0_20px_rgba(239,68,68,0.15)]' : 'border-slate-700/30 bg-slate-900/40'
+          }`}>
+            <div className="text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2 text-slate-400">
+              <Zap size={14} className={isLocked ? 'text-red-400' : 'text-yellow-400'} />
+              Motor de Operações
             </div>
-            <div className="flex items-start justify-between">
+            
+            <div className="flex flex-col justify-between h-[calc(100%-28px)]">
               <div>
-                <div className={`text-lg font-bold ${isLocked ? 'text-blue-400' : 'text-green-400'}`}>
-                  {isLocked ? '🔒 TRAVADO' : '🟢 ATIVO'}
+                <div className={`text-lg font-bold flex items-center gap-2 ${isLocked ? 'text-red-400 animate-pulse' : 'text-emerald-400'}`}>
+                  {isLocked ? '🛡️ PROTEÇÃO ATIVA' : '🟢 OPERANDO LIVRE'}
                 </div>
-                {isLocked && (
-                  <div className="text-xs text-blue-400 font-mono mt-2">
-                    {remainingSeconds}s / 900s
-                  </div>
-                )}
               </div>
+              
+              {/* Feedback Visual de Cooldown exigido pelo Backend */}
+              {isLocked && (
+                <div className="mt-3 py-1.5 px-3 bg-red-950/50 border border-red-500/30 rounded-lg flex items-center justify-center">
+                  <span className="text-[10px] font-bold text-red-300 uppercase tracking-widest text-center">
+                    Cooldown de Segurança Ativo<br/>(Bloqueio Manual)
+                  </span>
+                </div>
+              )}
             </div>
-            {isLocked && (
-              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-400"
-                  style={{ width: `${(remainingSeconds / 900) * 100}%` }}
-                />
-              </div>
-            )}
           </div>
 
           {/* 4. Position */}
@@ -208,7 +233,7 @@ export default function PremiumDashboardV2({ data, connected }) {
         {/* ============ MAIN GRID ============ */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Left Section: Chart */}
+          {/* Left Section: Chart - Sincronização em Tempo Real Resolvida */}
           <div className="lg:col-span-2">
             {/* Chart Card */}
             <div className="p-6 rounded-xl border border-slate-700/30 bg-slate-900/40 backdrop-blur-sm mb-6">
@@ -217,44 +242,22 @@ export default function PremiumDashboardV2({ data, connected }) {
                   <BarChart3 size={18} className="text-blue-400" />
                   <h3 className="text-sm font-semibold text-slate-100">Análise de Mercado</h3>
                 </div>
-                <div className="text-xs text-slate-500">Atualização em tempo real</div>
+                <div className="text-xs text-slate-500">Atualização em tempo real (0.5s)</div>
               </div>
-              <div className="h-96 bg-slate-800/30 rounded-lg border border-slate-700/20">
-                <TradingChart data={data} />
-              </div>
-            </div>
-
-            {/* Performance Metrics Row */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Win Rate */}
-              <div className="p-5 rounded-xl border border-slate-700/30 bg-slate-900/40 backdrop-blur-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Taxa de Acerto
-                  </span>
-                  <Percent size={16} className="text-emerald-400" />
-                </div>
-                <div className="text-2xl font-bold text-emerald-400">
-                  {formatPercent(data?.adaptation?.win_rate || 0)}%
-                </div>
-              </div>
-
-              {/* Trades Today */}
-              <div className="p-5 rounded-xl border border-slate-700/30 bg-slate-900/40 backdrop-blur-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Trades Hoje
-                  </span>
-                  <Activity size={16} className="text-cyan-400" />
-                </div>
-                <div className="text-2xl font-bold text-cyan-400">
-                  {data?.trades_today || 0}
-                </div>
+              <div className="h-130 w-full bg-slate-800/30 rounded-lg border border-slate-700/20">
+                {/* Aqui está o pulo do gato: desestruturar o objeto data do WebSocket para as props que o Chart.js entende */}
+                <TradingChart 
+                  liveCandle={data?.last_candle} 
+                  markersData={data?.markers} 
+                  inPosition={data?.position !== 0 && data?.position !== undefined} 
+                  entryPrice={data?.entry_price} 
+                  currentPosition={data?.position} 
+                />
               </div>
             </div>
-          </div>
+        </div>
 
-          {/* Right Section: Status & Controls */}
+        {/* Right Section: Status & Controls */}
           <div className="space-y-6">
             
             {/* Risk Management Panel */}
@@ -277,7 +280,7 @@ export default function PremiumDashboardV2({ data, connected }) {
             </div>
 
             {/* Generation Card */}
-            <div className="p-6 rounded-xl border bg-gradient-to-br from-purple-900/30 to-slate-900/40 backdrop-blur-sm border-purple-500/20">
+            <div className="p-6 rounded-xl border bg-linear-to-br from-purple-900/30 to-slate-900/40 backdrop-blur-sm border-purple-500/20">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   Protocolo IA
@@ -292,26 +295,53 @@ export default function PremiumDashboardV2({ data, connected }) {
                 Acurácia {formatPercent(data?.adaptation?.accuracy || 0)}%
               </div>
             </div>
-
-            {/* News Card */}
-            <div className="p-6 rounded-xl border border-slate-700/30 bg-slate-900/40 backdrop-blur-sm">
+{/* News Card */}
+            <div className="p-6 rounded-xl border border-slate-700/30 bg-slate-900/40 backdrop-blur-sm overflow-hidden">
+              <style>{`
+                @keyframes newsMarquee {
+                  /* Começa no zero (já visível) e vai até -50% (exatamente onde a cópia começa) */
+                  0% { transform: translateX(0); }
+                  100% { transform: translateX(-50%); }
+                }
+                .news-scroll {
+                  display: flex;
+                  width: max-content;
+                  /* Aumentado para 150s para leitura confortável */
+                  animation: newsMarquee 250s linear infinite; 
+                }
+                .news-scroll:hover {
+                  animation-play-state: paused;
+                }
+              `}</style>
+              
               <div className="flex items-center gap-2 mb-4 pb-4 border-b border-slate-700/20">
                 <Newspaper size={16} className="text-amber-400" />
-                <h4 className="text-sm font-semibold text-slate-100">Sentinel News</h4>
-                {Array.isArray(data?.news) && data.news.length > 0 && (
-                  <div className="w-2 h-2 rounded-full bg-amber-400 ml-auto"></div>
+                <h4 className="text-sm font-semibold text-slate-100">Agente de Notícias Gemini</h4>
+                {translatedNews.length > 0 && (
+                  <div className="w-2 h-2 rounded-full bg-amber-400 ml-auto animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.6)]"></div>
                 )}
               </div>
-              <div className="text-xs text-slate-300 line-clamp-3">
-                {Array.isArray(data?.news) && data.news.length > 0
-                  ? data.news[0]
-                  : 'Aguardando notícias do mercado...'}
-              </div>
-              {Array.isArray(data?.news) && data.news.length > 1 && (
-                <div className="text-xs text-amber-400 mt-3">
-                  +{data.news.length - 1} mais notícias
+              
+              <div className="relative w-full h-6 overflow-hidden flex items-center mask-fade-edges">
+                <div className="news-scroll absolute text-xs text-slate-300 font-medium tracking-wide">
+                  {(() => {
+                    // Prepara as notícias ou o texto padrão
+                    const newsItems = translatedNews.length > 0 
+                      ? translatedNews 
+                      : ['Aguardando fluxo de notícias do mercado...'];
+                    
+                    // O Pulo do Gato: Duplica o array para colar o fim no começo!
+                    const infiniteLoopArray = [...newsItems, ...newsItems];
+
+                    return infiniteLoopArray.map((item, idx) => (
+                      <span key={idx} className="mr-8 flex items-center shrink-0">
+                        <span className="text-amber-500 mr-2 text-[10px] animate-pulse">♦</span> 
+                        {item}
+                      </span>
+                    ));
+                  })()}
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Quick Stats */}

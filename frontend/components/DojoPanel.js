@@ -67,11 +67,11 @@ export default function DojoPanel({ state }) {
           <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white font-mono text-sm" placeholder="••••••••" />
           {mensagem && <div className="text-[10px] font-mono text-center p-1 bg-purple-500/10 text-purple-300 rounded border border-purple-500/20">{mensagem}</div>}
         </div>
-        <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700 flex flex-col justify-between min-h-[140px]">
+        <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700 flex flex-col justify-between min-h-35">
            <label className="text-xs font-semibold text-slate-400 flex items-center gap-2 mb-2 uppercase tracking-widest"><Database size={14}/> Coleta de Dados</label>
            <button onClick={handleDownload} className="w-full bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/50 py-2 rounded text-xs font-bold transition-all mt-auto">EXPORTAR HISTÓRICO (CSV)</button>
         </div>
-        <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700 flex flex-col justify-between min-h-[140px]">
+        <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700 flex flex-col justify-between min-h-35">
            <label className="text-xs font-semibold text-slate-400 flex items-center gap-2 mb-2 uppercase tracking-widest"><Upload size={14}/> Nova Geração</label>
            <input type="file" accept=".zip" onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)} className="text-[10px] text-slate-400 mb-2" />
            <button onClick={handleUpload} disabled={loading || !file} className="w-full bg-purple-600 hover:bg-purple-500 text-white py-2 rounded text-xs font-bold shadow-lg shadow-purple-500/20 transition-all mt-auto">APLICAR CÉREBRO</button>

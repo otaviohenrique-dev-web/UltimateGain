@@ -1,80 +1,81 @@
 import aiohttp
-import time
-from typing import List
+from google import genai
+from google.genai import types
+import asyncio
 
 class NewsService:
-    """Busca de manchetes com sistema anti-rate-limit (Cache)."""
-    
-    def __init__(self, api_key=""):
-        self.api_key = api_key
-        self.cached_news = []
-        self.last_fetch_ts = 0
-    
-    async def fetch_news(self, query="BTC", lang="PT") -> List[str]:
-        now = time.time()
+    def __init__(self, cryptocompare_key: str, gemini_key: str):
+        self.cryptocompare_key = cryptocompare_key
+        # Inicialização da nova SDK oficial
+        self.client = genai.Client(api_key=gemini_key)
+        self.base_url = "https://min-api.cryptocompare.com/data/v2/news/?lang=EN"
         
-        # Cache de 5 minutos
-        if self.last_fetch_ts > 0 and (now - self.last_fetch_ts) < 300:
-            return self.cached_news
+        # O System Prompt inegociável definido pelo PO
+        self.system_instruction = (
+            "Você é um sistema de segurança de trading quantitativo focado exclusivamente no Bitcoin. "
+            "Sua única função é ler manchetes de notícias recentes e emitir um alerta de risco.\n"
+            "Regras de Avaliação:\n"
+            "- Procure apenas por catalisadores de alta volatilidade ou risco de ruína (hacks em corretoras, processos da SEC, proibições de governos, falências sistêmicas, guerras).\n"
+            "- Ignore notícias técnicas, previsões de preço de analistas, ou desenvolvimentos normais do ecossistema.\n"
+            "- Se houver pelo menos UMA ameaça letal ao preço, classifique como DANGER.\n"
+            "- Se houver notícias preocupantes que geram incerteza regulatória ou macroeconômica, classifique como CAUTION.\n"
+            "- Se as notícias forem neutras, positivas ou irrelevantes para risco de colapso, classifique como SAFE.\n"
+            "Regra de Saída (CRÍTICA):\n"
+            "Responda ESTRITAMENTE com uma única palavra em maiúsculo: SAFE, CAUTION ou DANGER. "
+            "Não adicione pontuação, quebras de linha, justificativas ou formatação Markdown. "
+            "Se você falhar nesta regra, o sistema inteiro irá colapsar."
+        )
+
+    async def fetch_news(self):
+        """Busca notícias e retorna o par (headlines, risk_level)"""
+        headers = {"authorization": f"Apikey {self.cryptocompare_key}"}
         
         try:
-            url = f"https://min-api.cryptocompare.com/data/v2/news/"
-            query_str = str(query) if query else "BTC"
-            headers = {}
-            if self.api_key:
-                headers['authorization'] = f"Apikey {self.api_key}"
-            
             async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    params={'categories': query_str, 'lang': lang},
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=10)
-                ) as resp:
-                    if resp.status == 200:
-                        try:
-                            data = await resp.json()
-                            # Validar estrutura da resposta
-                            if not isinstance(data, dict):
-                                print(f">>> ⚠️ [NewsService] Resposta inesperada (não é dict)")
-                                return self.cached_news
-                            
-                            news_data = data.get('Data')
-                            
-                            # Extrair títulos de forma segura
-                            headlines = []
-                            
-                            # Se Data é um dicionário (chaves são IDs de artigos)
-                            if isinstance(news_data, dict):
-                                for article_id, item in list(news_data.items())[:10]:
-                                    if isinstance(item, dict) and 'title' in item:
-                                        headline = item.get('title', '')
-                                        if isinstance(headline, str):
-                                            headlines.append(headline)
-                            # Se Data é uma lista
-                            elif isinstance(news_data, list):
-                                for item in news_data[:10]:
-                                    if isinstance(item, dict) and 'title' in item:
-                                        headline = item.get('title', '')
-                                        if isinstance(headline, str):
-                                            headlines.append(headline)
-                            else:
-                                print(f">>> ⚠️ [NewsService] Campo 'Data' tipo inesperado: {type(news_data)}")
-                                return self.cached_news
-                            
-                            if headlines:
-                                self.cached_news = headlines
-                                self.last_fetch_ts = now
-                            
-                            return self.cached_news
-                        except Exception as parse_err:
-                            print(f">>> ⚠️ [NewsService] Erro ao parsear JSON: {type(parse_err).__name__}: {parse_err}")
-                            return self.cached_news
-                    else:
-                        print(f">>> ⚠️ [NewsService] Status HTTP {resp.status}")
-                        return self.cached_news
+                async with session.get(self.base_url, headers=headers) as resp:
+                    if resp.status != 200:
+                        return [], "CAUTION"
+                    
+                    data = await resp.json()
+                    news_items = data.get('Data', [])[:10] # Pegamos as 10 mais recentes
+                    
+                    headlines = [item['title'] for item in news_items]
+                    risk_level = await self._analyze_sentiment(headlines)
+                    
+                    return headlines, risk_level
         except Exception as e:
-            print(f">>> ❌ [NewsService] Erro: {type(e).__name__}: {e}")
-        
-        
-        return self.cached_news
+            print(f">>> ❌ [NewsService] Erro na busca: {e}")
+            return [], "CAUTION"
+
+    async def _analyze_sentiment(self, headlines):
+        """Consolida notícias e extrai o Risk Level com determinismo absoluto"""
+        if not headlines:
+            return "CAUTION"
+
+        # Os dados do utilizador (as manchetes) são enviados separadamente das regras
+        context = " | ".join(headlines)
+        user_prompt = f"Manchetes do Mercado: '{context}'"
+
+        try:
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
+                model='gemini-2.5-flash',
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=self.system_instruction,
+                    temperature=0.0, # ZERO criatividade. Determinismo absoluto.
+                )
+            )
+            
+            sentiment = response.text.strip().upper()
+            
+            # Última barreira de segurança em caso de anomalia extrema
+            if "DANGER" in sentiment: return "DANGER"
+            if "SAFE" in sentiment: return "SAFE"
+            
+            # O default seguro é CAUTION
+            return "CAUTION"
+            
+        except Exception as e:
+            print(f">>> ❌ [NewsService] Erro Gemini: {e}")
+            return "CAUTION"

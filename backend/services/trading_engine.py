@@ -1,5 +1,5 @@
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional
 import numpy as np
 
@@ -13,7 +13,7 @@ class Trade:
     pnl: Optional[float] = None
 
 class TradingEngine:
-    """Engine de trading isolada - Executa ordens, calcula PnL e gerencia o modelo IA."""
+    """Engine de trading isolada - Executa ordens, calcula PnL punitivo e gerencia o modelo IA."""
     
     def __init__(self, model=None, balance=100.0):
         self.model = model
@@ -48,7 +48,7 @@ class TradingEngine:
             return 0
     
     def execute_trade(self, action, current_price, fee_rate=0.001):
-        """Executa trade baseado na ação (0=hold, 1=long, 2=short mapeado para -1)."""
+        """Executa trade aplicando taxas severas de abertura e fechamento."""
         target_pos = 1 if action == 1 else (-1 if action == 2 else 0)
         
         if target_pos == self.position:
@@ -56,20 +56,26 @@ class TradingEngine:
         
         # Fecha posição anterior se houver
         if self.position != 0:
-            pnl = self._calculate_pnl(current_price, fee_rate)
-            self.balance += pnl
+            pnl_bruto = self._calculate_raw_pnl(current_price)
+            # A taxa de fechamento morde o montante final (capital investido + lucro/preju)
+            fee_fechamento = (self.balance + pnl_bruto) * fee_rate 
+            pnl_liquido = pnl_bruto - fee_fechamento
+            
+            self.balance += pnl_liquido
             
             self.trades_history.append(Trade(
                 action='close',
                 position='long' if self.position == 1 else 'short',
                 price=current_price,
                 timestamp=time.time(),
-                pnl=pnl
+                pnl=pnl_liquido
             ))
+            print(f">>> 📉 [TradingEngine] Posição fechada. PnL: ${pnl_liquido:.2f} | Saldo: ${self.balance:.2f}")
         
         # Abre nova posição
         if target_pos != 0:
-            self.balance -= (self.balance * fee_rate)
+            fee_abertura = self.balance * fee_rate
+            self.balance -= fee_abertura # Sangramento instantâneo do capital na abertura
             self.position = target_pos
             self.entry_price = current_price
             
@@ -79,22 +85,21 @@ class TradingEngine:
                 price=current_price,
                 timestamp=time.time()
             ))
-            print(f">>> 🚀 [TradingEngine] Trade: {self.trades_history[-1].position.upper()} @ {current_price:.2f}")
+            print(f">>> 🚀 [TradingEngine] Trade: {self.trades_history[-1].position.upper()} @ {current_price:.2f} | Fee Paga: -${fee_abertura:.4f}")
         else:
             self.position = 0
             self.entry_price = 0.0
         
         return target_pos
     
-    def _calculate_pnl(self, current_price, fee_rate):
+    def _calculate_raw_pnl(self, current_price):
+        """Calcula o PnL puro da variação do ativo, sem as taxas."""
         if self.position == 1:
             change_pct = (current_price - self.entry_price) / self.entry_price
         else:
             change_pct = (self.entry_price - current_price) / self.entry_price
         
-        pnl = self.balance * change_pct
-        pnl -= (self.balance * fee_rate)
-        return pnl
+        return self.balance * change_pct
     
     def get_stats(self):
         closed_trades = [t for t in self.trades_history if t.pnl is not None]
@@ -108,6 +113,6 @@ class TradingEngine:
             'total_trades': len(closed_trades),
             'wins': wins,
             'losses': losses,
-            'win_rate': (wins / len(closed_trades) * 100),
-            'total_pnl': sum(t.pnl for t in closed_trades)
+            'win_rate': round((wins / len(closed_trades) * 100), 2),
+            'total_pnl': round(sum(t.pnl for t in closed_trades), 2)
         }
